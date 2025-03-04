@@ -994,7 +994,7 @@ def normal_export_translation(layout, semantic, flip):
     else:
         return lambda x: x
 
-def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal):
+def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal,flip_mesh):
     # Ensure normals are 3-dimensional:
     # XXX: Assertion triggers in DOA6
     if len(data[0]) == 4:
@@ -1003,7 +1003,7 @@ def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal):
             operator.report({'WARNING'}, 'Normals are 4D, storing W coordinate in NORMAL.w vertex layer. Beware that some types of edits on this mesh may be problematic.')
             vertex_layers['NORMAL.w'] = [[x[3]] for x in data]
     normals = [tuple(map(translate_normal, (x[0], x[1], x[2]))) for x in data]
-
+    normals = [(-(2*flip_mesh-1)*x[0], x[1], x[2]) for x in normals]
     # To make sure the normals don't get lost by Blender's edit mode,
     # or mesh.update() we need to set custom normals in the loops, not
     # vertices.
@@ -1023,10 +1023,11 @@ def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal):
         l.normal[:] = normals[l.vertex_index]
     return []
 
-def import_normals_step2(mesh):
+def import_normals_step2(mesh, flip_mesh):
     # Taken from import_obj/import_fbx
     clnors = array('f', [0.0] * (len(mesh.loops) * 3))
     mesh.loops.foreach_get("normal", clnors)
+    clnors = [(-(2*flip_mesh-1)*x[0], x[1], x[2]) for x in clnors]
 
     # Not sure this is still required with use_auto_smooth, but the other
     # importers do it, and at the very least it shouldn't hurt...
@@ -1289,7 +1290,7 @@ def import_vertices(mesh, obj, vb, operator, semantic_translations={}, flip_norm
         elif translated_elem_name == 'NORMAL':
             use_normals = True
             translate_normal = normal_import_translation(elem, flip_normal)
-            normals = import_normals_step1(mesh, data, vertex_layers, operator, translate_normal)
+            normals = import_normals_step1(mesh, data, vertex_layers, operator, translate_normal,flip_mesh)
         elif translated_elem_name in ('TANGENT', 'BINORMAL'):
         #    # XXX: loops.tangent is read only. Not positive how to handle
         #    # this, or if we should just calculate it when re-exporting.
@@ -1403,14 +1404,14 @@ def import_3dmigoto_vb_ib(operator, context, paths, flip_texcoord_v=True, flip_w
         if bpy.app.version >= (4, 1):
             mesh.normals_split_custom_set_from_vertices(normals)
         else:
-            import_normals_step2(mesh)
+            import_normals_step2(mesh, flip_mesh)
     elif hasattr(mesh, 'calc_normals'): # Dropped in Blender 4.0
         mesh.calc_normals()
 
     link_object_to_scene(context, obj)
     select_set(obj, True)
     set_active_object(context, obj)
-    
+
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     if merge_verts:
@@ -2883,10 +2884,7 @@ def generate_mod_folder(path, character_name, offsets, no_ramps, delete_intermed
                 vb_override_ini += f"[TextureOverride{current_name}Blend]\nhash = {component['blend_vb']}\nvb1 = Resource{current_name}Blend\nhandling = skip\ndraw = {len(position) // position_stride},0 \n\n"
             vb_override_ini += f"[TextureOverride{current_name}Texcoord]\nhash = {component['texcoord_vb']}\nvb1 = Resource{current_name}Texcoord\n\n"
             vb_override_ini += f"[TextureOverride{current_name}VertexLimitRaise]\nhash = {component['draw_vb']}\n"
-            if game == GameEnum.ZenlessZoneZero:
-                vb_override_ini += f"override_vertex_count = {len(position) // position_stride}\noverride_byte_stride = {stride}\n\n"
-            else:
-                vb_override_ini += f"; override_vertex_count = {len(position) // position_stride}\n; override_byte_stride = {stride}\n\n"
+            vb_override_ini += f"override_vertex_count = {len(position) // position_stride}\noverride_byte_stride = {stride}\n\n"
 
             vb_res_ini += f"[Resource{current_name}Position]\ntype = Buffer\nstride = {position_stride}\nfilename = {current_name}Position.buf\n\n"
             vb_res_ini += f"[Resource{current_name}Blend]\ntype = Buffer\nstride = {blend_stride}\nfilename = {current_name}Blend.buf\n\n"
@@ -3308,7 +3306,7 @@ def blender_to_migoto_vertices(operator, mesh, obj, fmt_layout:InputLayout, game
             mesh.vertices.foreach_get("undeformed_co", position.ravel())
             result = numpy.ones(len(mesh.loops), dtype=(numpy.float32, elem.format_len))
             result[idxs, 0:3] = position[verts]
-            result[idxs, 0:1] *= -(2 * main_obj.get("3DMigoto:FlipMesh", False) - 1)
+            result[idxs, 0] *= -(2 * main_obj.get("3DMigoto:FlipMesh", False) - 1)
             if 'POSITION.w' in custom_attributes_float(mesh):
                 loop_position_w = numpy.ones(len(mesh.loops), dtype=(numpy.float16, (1,)))
                 loop_position_w[idxs] = custom_attributes_float(mesh)['POSITION.w'].data[verts].value
@@ -3318,6 +3316,7 @@ def blender_to_migoto_vertices(operator, mesh, obj, fmt_layout:InputLayout, game
             mesh.loops.foreach_get("normal", normal.ravel())
             result = numpy.zeros(len(mesh.loops), dtype=(numpy.float16, elem.format_len))
             result[:, 0:3] = normal
+            result[idxs, 0] *= -(2 * main_obj.get("3DMigoto:FlipMesh", False) - 1)
             if 'NORMAL.w' in custom_attributes_float(mesh):
                 loop_normal_w = numpy.zeros(len(mesh.loops), dtype=(numpy.float16, (1,)))
                 for loop in mesh.loops:
