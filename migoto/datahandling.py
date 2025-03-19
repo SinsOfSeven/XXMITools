@@ -275,7 +275,7 @@ class InputLayoutElement(object):
     def next_validate(f, field, line=None):
         if line is None:
             line = next(f).strip()
-        assert(line.startswith(field + ': '))
+        assert line.startswith(field + ': ')
         return line[len(field) + 2:]
 
     @staticmethod
@@ -302,7 +302,7 @@ class InputLayoutElement(object):
 
     def pad(self, data, val):
         padding = self.format_len - len(data)
-        assert(padding >= 0)
+        assert padding >= 0
         data.extend([val]*padding)
         return data
 
@@ -382,7 +382,7 @@ class InputLayout(object):
             data = elem.encode(data)
             buf[elem.AlignedByteOffset:elem.AlignedByteOffset + len(data)] = data
 
-        assert(len(buf) == stride)
+        assert len(buf) == stride
         return buf
 
     def decode(self, buf, vbuf_idx):
@@ -499,7 +499,7 @@ class IndividualVertexBuffer(object):
         # vertices. If the buffer has any per-vertex elements than we should
         # have the number of vertices declared in the header.
         if self.vertices:
-            assert(len(self.vertices) == self.vertex_count)
+            assert len(self.vertices) == self.vertex_count
 
     def parse_vb_bin(self, f, use_drawcall_range=False):
         f.seek(self.offset)
@@ -605,7 +605,7 @@ class VertexBufferGroup(object):
 
         if load_vertices:
             self.merge_vbs(self.vbs)
-            assert(len(self.vertices) == self.vertex_count)
+            assert len(self.vertices) == self.vertex_count
 
     def parse_vb_bin(self, files, use_drawcall_range=False):
         for (bin_f, fmt_f) in files:
@@ -629,7 +629,7 @@ class VertexBufferGroup(object):
         self.topology = self.vbs[0].topology
 
         self.merge_vbs(self.vbs)
-        assert(len(self.vertices) == self.vertex_count)
+        assert len(self.vertices) == self.vertex_count
 
     def append(self, vertex):
         self.vertices.append(vertex)
@@ -678,9 +678,9 @@ class VertexBufferGroup(object):
     def merge_vbs(self, vbs):
         self.vertices = self.vbs[0].vertices
         del self.vbs[0].vertices
-        assert(len(self.vertices) == self.vertex_count)
+        assert len(self.vertices) == self.vertex_count
         for vb in self.vbs[1:]:
-            assert(len(vb.vertices) == self.vertex_count)
+            assert len(vb.vertices) == self.vertex_count
             [ self.vertices[i].update(vertex) for i,vertex in enumerate(vb.vertices) ]
             del vb.vertices
 
@@ -693,7 +693,7 @@ class VertexBufferGroup(object):
             raise Fatal('Cannot merge multiple vertex buffers - please check for updates of the 3DMigoto import script, or import each buffer separately')
         self.vertices.extend(other.vertices[self.vertex_count:])
         self.vertex_count = max(self.vertex_count, other.vertex_count)
-        assert(len(self.vertices) == self.vertex_count)
+        assert len(self.vertices) == self.vertex_count
 
     def wipe_semantic_for_testing(self, semantic, val=0):
         print('WARNING: WIPING %s FOR TESTING PURPOSES!!!' % semantic)
@@ -772,7 +772,7 @@ class IndexBuffer(object):
         self.used_in_drawcall = None
 
         if isinstance(args[0], io.IOBase):
-            assert(len(args) == 1)
+            assert len(args) == 1
             self.parse_ib_txt(args[0], load_indices)
         else:
             self.format, = args
@@ -813,7 +813,7 @@ class IndexBuffer(object):
                     return
                 self.parse_index_data(f)
         if self.used_in_drawcall != False:
-            assert(len(self.faces) * self.indices_per_face + self.extra_indices == self.index_count)
+            assert len(self.faces) * self.indices_per_face + self.extra_indices == self.index_count
 
     def parse_ib_bin(self, f, use_drawcall_range=False):
         f.seek(self.offset)
@@ -834,11 +834,11 @@ class IndexBuffer(object):
             if len(face) == self.indices_per_face:
                 self.faces.append(tuple(face))
                 face = []
-        assert(len(face) == 0)
+        assert len(face) == 0, 'Index buffer has incomplete face at end of file'
         self.expand_strips()
 
         if use_drawcall_range:
-            assert(len(self.faces) * self.indices_per_face + self.extra_indices == self.index_count)
+            assert len(self.faces) * self.indices_per_face + self.extra_indices == self.index_count
         else:
             # We intentionally disregard the index count when loading from a
             # binary file, as we assume frame analysis might have only dumped a
@@ -851,7 +851,7 @@ class IndexBuffer(object):
     def parse_index_data(self, f):
         for line in map(str.strip, f):
             face = tuple(map(int, line.split()))
-            assert(len(face) == self.indices_per_face)
+            assert len(face) == self.indices_per_face
             self.faces.append(face)
         self.expand_strips()
 
@@ -996,7 +996,7 @@ def normal_export_translation(layout, semantic, flip):
     else:
         return lambda x: x
 
-def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal):
+def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal,flip_mesh):
     # Ensure normals are 3-dimensional:
     # XXX: Assertion triggers in DOA6
     if len(data[0]) == 4:
@@ -1005,7 +1005,7 @@ def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal):
             operator.report({'WARNING'}, 'Normals are 4D, storing W coordinate in NORMAL.w vertex layer. Beware that some types of edits on this mesh may be problematic.')
             vertex_layers['NORMAL.w'] = [[x[3]] for x in data]
     normals = [tuple(map(translate_normal, (x[0], x[1], x[2]))) for x in data]
-
+    normals = [(-(2*flip_mesh-1)*x[0], x[1], x[2]) for x in normals]
     # To make sure the normals don't get lost by Blender's edit mode,
     # or mesh.update() we need to set custom normals in the loops, not
     # vertices.
@@ -1025,23 +1025,22 @@ def import_normals_step1(mesh, data, vertex_layers, operator, translate_normal):
         l.normal[:] = normals[l.vertex_index]
     return []
 
-def import_normals_step2(mesh):
-    # Taken from import_obj/import_fbx
-    clnors = array('f', [0.0] * (len(mesh.loops) * 3))
+def import_normals_step2(mesh, flip_mesh):
+    clnors = numpy.zeros(len(mesh.loops)*3, dtype=numpy.float32)
     mesh.loops.foreach_get("normal", clnors)
-
+    clnors = clnors.reshape((-1, 3))
+    clnors[:, 0] *= -(2 * flip_mesh - 1)
     # Not sure this is still required with use_auto_smooth, but the other
     # importers do it, and at the very least it shouldn't hurt...
     mesh.polygons.foreach_set("use_smooth", [True] * len(mesh.polygons))
-
-    mesh.normals_split_custom_set(tuple(zip(*(iter(clnors),) * 3)))
+    mesh.normals_split_custom_set(clnors.tolist())
     mesh.use_auto_smooth = True # This has a double meaning, one of which is to use the custom normals
     # XXX CHECKME: show_edge_sharp moved in 2.80, but I can't actually
     # recall what it does and have a feeling it was unimportant:
     #mesh.show_edge_sharp = True
 
 def import_vertex_groups(mesh, obj, blend_indices, blend_weights):
-    assert(len(blend_indices) == len(blend_weights))
+    assert len(blend_indices) == len(blend_weights), 'Mismatched blend indices and weights'
     if blend_indices:
         # We will need to make sure we re-export the same blend indices later -
         # that they haven't been renumbered. Not positive whether it is better
@@ -1224,7 +1223,7 @@ def import_faces_from_vb_trianglestrip(mesh, vb, flip_winding):
     mesh.polygons.foreach_set('loop_start', [x*3 for x in range(num_faces)])
     mesh.polygons.foreach_set('loop_total', [3] * num_faces)
 
-def import_vertices(mesh, obj, vb, operator, semantic_translations={}, flip_normal=False):
+def import_vertices(mesh, obj, vb, operator, semantic_translations={}, flip_normal=False, flip_mesh=False):
     mesh.vertices.add(len(vb.vertices))
 
     blend_indices = {}
@@ -1269,7 +1268,7 @@ def import_vertices(mesh, obj, vb, operator, semantic_translations={}, flip_norm
                     # store it in a vertex layer and warn the modder.
                     operator.report({'WARNING'}, 'Positions are 4D, storing W coordinate in POSITION.w vertex layer. Beware that some types of edits on this mesh may be problematic.')
                     vertex_layers['POSITION.w'] = [[x[3]] for x in data]
-            positions = [(x[0], x[1], x[2]) for x in data]
+            positions = [(-(2*flip_mesh-1)*x[0], x[1], x[2]) for x in data]
             mesh.vertices.foreach_set('co', unpack_list(positions))
         elif translated_elem_name.startswith('COLOR'):
             if len(data[0]) <= 3 or vertex_color_layer_channels == 4:
@@ -1291,13 +1290,13 @@ def import_vertices(mesh, obj, vb, operator, semantic_translations={}, flip_norm
         elif translated_elem_name == 'NORMAL':
             use_normals = True
             translate_normal = normal_import_translation(elem, flip_normal)
-            normals = import_normals_step1(mesh, data, vertex_layers, operator, translate_normal)
+            normals = import_normals_step1(mesh, data, vertex_layers, operator, translate_normal,flip_mesh)
         elif translated_elem_name in ('TANGENT', 'BINORMAL'):
         #    # XXX: loops.tangent is read only. Not positive how to handle
         #    # this, or if we should just calculate it when re-exporting.
         #    for l in mesh.loops:
         #        FIXME: rescale range if elem.Format.endswith('_UNORM')
-        #        assert(data[l.vertex_index][3] in (1.0, -1.0))
+        #        assert data[l.vertex_index][3] in (1.0, -1.0)
         #        l.tangent[:] = data[l.vertex_index][0:3]
             operator.report({'INFO'}, 'Skipping import of %s in favour of recalculating on export' % elem.name)
         elif translated_elem_name.startswith('BLENDINDICES'):
@@ -1333,10 +1332,10 @@ def assert_pointlist_ib_is_pointless(ib, vb):
     # we do see this in One Piece Burning Blood. For now, just verify that the
     # index buffers are the trivial case that lists every vertex in order, and
     # just ignore them since we already loaded the vertex buffer in that order.
-    assert(len(vb) == len(ib)) # FIXME: Properly implement point list index buffers
-    assert(all([(i,) == j for i,j in enumerate(ib.faces)])) # FIXME: Properly implement point list index buffers
+    assert len(vb) == len(ib) # FIXME: Properly implement point list index buffers
+    assert all([(i,) == j for i,j in enumerate(ib.faces)]) # FIXME: Properly implement point list index buffers
 
-def import_3dmigoto_vb_ib(operator, context, paths, flip_texcoord_v=True, flip_winding=False, flip_normal=False, axis_forward='-Z', axis_up='Y', pose_cb_off=[0,0], pose_cb_step=1, merge_verts=False, tris_to_quads=False, clean_loose=False):
+def import_3dmigoto_vb_ib(operator, context, paths, flip_texcoord_v=True, flip_winding=False, flip_mesh=False, flip_normal=False, axis_forward='-Z', axis_up='Y', pose_cb_off=[0,0], pose_cb_step=1, merge_verts=False, tris_to_quads=False, clean_loose=False):
     vb, ib, name, pose_path = load_3dmigoto_mesh(operator, paths)
 
     mesh = bpy.data.meshes.new(name)
@@ -1362,6 +1361,9 @@ def import_3dmigoto_vb_ib(operator, context, paths, flip_texcoord_v=True, flip_w
     # a previously exported file can also set them by default?
     obj['3DMigoto:FlipWinding'] = flip_winding
     obj['3DMigoto:FlipNormal'] = flip_normal
+    obj['3DMigoto:FlipMesh'] = flip_mesh
+    if flip_mesh:
+        flip_winding = not flip_winding
 
     if ib is not None:
         if ib.topology in ('trianglelist', 'trianglestrip'):
@@ -1382,7 +1384,7 @@ def import_3dmigoto_vb_ib(operator, context, paths, flip_texcoord_v=True, flip_w
     if vb.topology == 'pointlist':
         operator.report({'WARNING'}, '{}: uses point list topology, which is highly experimental and may have issues with normals/tangents/lighting. This may not be the mesh you are looking for.'.format(mesh.name))
 
-    (blend_indices, blend_weights, texcoords, vertex_layers, use_normals, normals) = import_vertices(mesh, obj, vb, operator, semantic_translations, flip_normal)
+    (blend_indices, blend_weights, texcoords, vertex_layers, use_normals, normals) = import_vertices(mesh, obj, vb, operator, semantic_translations, flip_normal, flip_mesh)
 
     import_uv_layers(mesh, obj, texcoords, flip_texcoord_v)
     if not texcoords:
@@ -1402,14 +1404,14 @@ def import_3dmigoto_vb_ib(operator, context, paths, flip_texcoord_v=True, flip_w
         if bpy.app.version >= (4, 1):
             mesh.normals_split_custom_set_from_vertices(normals)
         else:
-            import_normals_step2(mesh)
+            import_normals_step2(mesh, flip_mesh)
     elif hasattr(mesh, 'calc_normals'): # Dropped in Blender 4.0
         mesh.calc_normals()
 
     link_object_to_scene(context, obj)
     select_set(obj, True)
     set_active_object(context, obj)
-    
+
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     if merge_verts:
@@ -1656,7 +1658,6 @@ def write_ini_file(f, vb, vb_path, ib, ib_path, strides, obj, topology):
 
 def export_3dmigoto(operator, context, vb_path, ib_path, fmt_path, ini_path):
     obj = context.object
-
     if obj is None:
         raise Fatal('No object selected')
 
@@ -2555,12 +2556,19 @@ def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_p
         relevant_objects = [x for x in relevant_objects if x]
         print(f'Objects to export: {relevant_objects}')
 
-        
         for i, obj in enumerate(relevant_objects):
             if i < len(base_classifications):
                 classification = base_classifications[i]
             else:
                 classification = extended_classifications[i-len(base_classifications)]
+
+            flip_properties = ["3DMigoto:FlipNormal", "3DMigoto:FlipTangent", "3DMigoto:FlipWinding", "3DMigoto:FlipMesh"]
+            for prop in flip_properties:
+                if prop not in obj:
+                    obj[prop] = False
+            # Handle Legacy 3DMigoto Custom Properties from old projects
+            if '3DMigoto:VB0Stride' not in obj and '3DMigoto:VBStride' in obj:
+                obj['3DMigoto:VB0Stride'] = obj['3DMigoto:VBStride']
 
             vb_path  = os.path.join(os.path.dirname(vb_path), current_name + classification + ".vb0")
             ib_path  = os.path.join(os.path.dirname(ib_path), current_name + classification + ".ib")
@@ -2568,10 +2576,11 @@ def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_p
             sko_path = os.path.join(os.path.dirname(fmt_path), current_name + classification + ".sko")
             skb_path = os.path.join(os.path.dirname(fmt_path), current_name + classification + ".skb")
             layout = InputLayout(obj['3DMigoto:VBLayout'])
-            translate_normal = normal_export_translation(layout, 'NORMAL', operator.flip_normal)
-            translate_tangent = normal_export_translation(layout, 'TANGENT', operator.flip_tangent)
+            translate_normal = normal_export_translation(layout, 'NORMAL', obj.get('3DMigoto:FlipNormal', False))
+            translate_tangent = normal_export_translation(layout, 'TANGENT', obj.get('3DMigoto:FlipNormal', False))
             translate_normal = numpy.vectorize(translate_normal)
             translate_tangent = numpy.vectorize(translate_tangent)
+
             strides = {x[11:-6]: obj[x] for x in obj.keys() if x.startswith('3DMigoto:VB') and x.endswith('Stride')}
             topology = 'trianglelist'
             if '3DMigoto:Topology' in obj:
@@ -2597,7 +2606,7 @@ def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_p
             # completely blow this out - we still want to reuse identical vertices
             # via the index buffer. There might be a convenience function in
             # Blender to do this, but it's easy enough to do this ourselves
- 
+
             # if vb.topology == 'trianglelist':
             # elif vb.topology == 'pointlist':
             #     for index, blender_vertex in enumerate(mesh.vertices):
@@ -2630,7 +2639,7 @@ def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_p
                 ib, vbarr = mesh_to_bin(context, operator, obj, layout, game, translate_normal, translate_tangent, obj, outline_properties)
                 offsets[current_name + classification] = [("", 0, obj.name, len(ib)*3, len(vbarr), 0)]
             else:
-                raise Fatal('topology "%s" is not supported for export' % vb.topology)
+                raise Fatal('topology "%s" is not supported for export' % topology)
 
             # get all objects in collection of the same name as current mesh
             # convert them all to binary
@@ -3013,7 +3022,7 @@ class ConstantBuffer(object):
                     i += 1
                     if end_idx and i > end_idx:
                         break
-        assert(entry == [])
+        assert entry == []
 
     def as_3x4_matrices(self):
         return [ Matrix(self.entries[i:i+3]) for i in range(0, len(self.entries), 3) ]
@@ -3210,6 +3219,7 @@ def blender_to_migoto_vertices(operator, mesh, obj, fmt_layout:InputLayout, game
             mesh.vertices.foreach_get("undeformed_co", position.ravel())
             result = numpy.ones(len(mesh.loops), dtype=(numpy.float32, elem.format_len))
             result[idxs, 0:3] = position[verts]
+            result[idxs, 0] *= -(2 * main_obj.get("3DMigoto:FlipMesh", False) - 1)
             if 'POSITION.w' in custom_attributes_float(mesh):
                 loop_position_w = numpy.ones(len(mesh.loops), dtype=(numpy.float16, (1,)))
                 loop_position_w[idxs] = custom_attributes_float(mesh)['POSITION.w'].data[verts].value
@@ -3219,12 +3229,13 @@ def blender_to_migoto_vertices(operator, mesh, obj, fmt_layout:InputLayout, game
             mesh.loops.foreach_get("normal", normal.ravel())
             result = numpy.zeros(len(mesh.loops), dtype=(numpy.float16, elem.format_len))
             result[:, 0:3] = normal
+            result[idxs, 0] *= -(2 * main_obj.get("3DMigoto:FlipMesh", False) - 1)
             if 'NORMAL.w' in custom_attributes_float(mesh):
                 loop_normal_w = numpy.zeros(len(mesh.loops), dtype=(numpy.float16, (1,)))
                 for loop in mesh.loops:
                     loop_normal_w[loop.index] = custom_attributes_float(mesh)['NORMAL.w'].data[loop.vertex_index].value
                 result[:, 3] = loop_normal_w
-            if operator.flip_normal: #This flips and converts normals to UNORM if needed
+            if main_obj.get("3DMigoto:FlipNormal", False): #This flips and converts normals to UNORM if needed
                 result = -result
             if elem.Format.upper().endswith("_UNORM"):
                 result = result * 2 - 1
@@ -3240,7 +3251,7 @@ def blender_to_migoto_vertices(operator, mesh, obj, fmt_layout:InputLayout, game
                     temp_tangent[loop.index] = export_outline.get(loop.vertex_index, temp_tangent[loop.index])
             elif game == GameEnum.GenshinImpact:
                 mesh.loops.foreach_get("normal", temp_tangent.ravel())
-            if operator.flip_tangent: #This flips and converts tangent to UNORM if needed
+            if main_obj.get("3DMigoto:FlipNormal", False): #This flips and converts tangent to UNORM if needed
                 temp_tangent = -temp_tangent
             if elem.Format.upper().endswith("_UNORM"):
                 temp_tangent = temp_tangent * 2 - 1
@@ -3249,6 +3260,7 @@ def blender_to_migoto_vertices(operator, mesh, obj, fmt_layout:InputLayout, game
             if game == GameEnum.ZenlessZoneZero:
                 result[:, 3] = -result[:, 3]
             result = result[:, 0:elem.format_len]
+            result[:, 0] *= -(2 * main_obj.get("3DMigoto:FlipMesh", False) - 1)
         elif translated_elem_name.startswith("BLENDWEIGHT"):
             if weights_np is None:
                 if weights is None:
@@ -3389,7 +3401,7 @@ def mesh_to_bin(context, operator, obj, fmt_layout:InputLayout, game:GameEnum, t
         raise Fatal ("ERROR: Unable to find UV map. Double check UV map exists and is called TEXCOORD.xy")
     start_timer = time.time()
     migoto_verts, dtype = blender_to_migoto_vertices(operator, mesh, obj, fmt_layout, game, translate_normal, translate_tangent, main_obj, outline_properties)
-    
+
     ibvb_timer = time.time()
     indexed_vertices = collections.OrderedDict()
     # ib = numpy.zeros(len(mesh.polygons), dtype=(numpy.uint32, 3))
@@ -3407,7 +3419,10 @@ def mesh_to_bin(context, operator, obj, fmt_layout:InputLayout, game:GameEnum, t
                     ]for poly in mesh.polygons]
     ib = numpy.array(ib, dtype=numpy.uint32)
     ib = numpy.reshape(ib, (-1, 3))
-    if operator.flip_winding:
+
+    # Bitwise XOR. We are assuming these values would always be boolean.
+    # It might need more sanity checks in the future.
+    if main_obj.get("3DMigoto:FlipMesh", False) ^ main_obj.get("3DMigoto:FlipWinding", False):
         ib = numpy.fliplr(ib)
     print(f"\t\tIB GEN: {time.time() - ibvb_timer:.5f}, {len(ib)},{len(mesh.loops)//3}")
 
