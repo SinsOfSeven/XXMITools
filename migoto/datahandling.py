@@ -2657,11 +2657,12 @@ def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_p
                     obj_ib, obj_vbarr = mesh_to_bin(context, operator, obj_c, layout, game, translate_normal, translate_tangent, obj, outline_properties)
                     obj_ib += count
                     count += len(obj_vbarr)
+                    ib = numpy.append(ib, obj_ib)
+                    vbarr = numpy.append(vbarr, obj_vbarr)
                     if operator.join_meshes is False:
                         offsets[current_name + classification].append((collection, depth, obj_c.name, len(obj_ib) * 3, len(obj_vbarr), ib_offset))
                     ib_offset += len(obj_ib) * 3
-                    ib = numpy.append(ib, obj_ib)
-                    vbarr = numpy.append(vbarr, obj_vbarr)
+
 
             # Must be done to all meshes and then compiled
             # if operator.export_shapekeys and mesh.shape_keys is not None and len(mesh.shape_keys.key_blocks) > 1:
@@ -2777,8 +2778,8 @@ def generate_mod_folder(operator, path, character_name, offsets, no_ramps, delet
             # This is the path for components without blend data (simple weapons, objects, etc.)
             # Simplest route since we do not need to split up the buffer into multiple components
             else:
-                position += collect_vb_single(path, current_name, current_object, int(strides[0]))
-                position_stride = int(strides[0])
+                position += collect_vb_single(path, current_name, current_object, stride)
+                position_stride = stride
 
             print("Collecting IB")
             print(f"{current_name}{current_object} offset: {offset}")
@@ -2797,7 +2798,7 @@ def generate_mod_folder(operator, path, character_name, offsets, no_ramps, delet
 
             char_hash[num]["objects"].append({"fullname": f"{current_name}{current_object}", "offsets": offsets[current_name + current_object]})
 
-            offset += len(position) // position_stride
+            offset = len(position) // position_stride
 
             # Older versions can only manage diffuse and lightmaps
             texture_hashes = component["texture_hashes"][i] if "texture_hashes" in component else [["Diffuse", ".dds", "_"], ["LightMap", ".dds", "_"]]
