@@ -938,13 +938,30 @@ class XXMIProperties(bpy.types.PropertyGroup):
         description="Pattern to name export folders. Example: name_###",
         default="",
     )
-class DestinationSelector(bpy.types.Operator, ExportHelper):
+    template_panel: bpy.props.BoolProperty(
+        name="Templates",
+        description="Settings related to INI templating.",
+        default=False
+    )#type: ignore
+    template_path: bpy.props.StringProperty(
+        name="Template Folder", 
+        description="Template Folder:", 
+        default="", maxlen=1024,
+    ) #type: ignore
+    template_selected: bpy.props.StringProperty(
+        name="Template", 
+        description="Active Template:", 
+        default="", maxlen=1024,
+    ) #type: ignore
+
+class FolderSelector(bpy.types.Operator, ExportHelper):
     """Export single mod based on current frame"""
-    bl_idname = "destination.selector"
-    bl_label = "Destination"
+    bl_idname = "folder.selector"
+    bl_label = "Folder Selector"
     filename_ext = "."
     use_filter_folder = True
-    filter_glob : bpy.props.StringProperty(default='.', options={'HIDDEN'},)
+    filter_glob : bpy.props.StringProperty(default='.', options={'HIDDEN'},) #type: ignore
+    xxmiprop: bpy.props.StringProperty(default="",options={'HIDDEN'},) #type: ignore
 
     def execute(self, context):
         userpath = self.properties.filepath
@@ -955,29 +972,31 @@ class DestinationSelector(bpy.types.Operator, ExportHelper):
                 msg = "Please select a directory not a file\n" + userpath
                 self.report({'ERROR'}, msg)
                 return {'CANCELLED'}
-        context.scene.xxmi.destination_path = self.properties.filepath
+        context.scene.xxmi[self.xxmiprop] = self.properties.filepath
         bpy.ops.ed.undo_push(message="XXMI Tools: destination selected")
         return{'FINISHED'}
-class DumpSelector(bpy.types.Operator, ExportHelper):
+    
+class TemplateSelector(bpy.types.Operator, ExportHelper):
     """Export single mod based on current frame"""
-    bl_idname = "dump.selector"
-    bl_label = "Dump folder selector"
-    filename_ext = "."
-    use_filter_folder = True
-    filter_glob : bpy.props.StringProperty(default='.', options={'HIDDEN'},)
+    bl_idname = "template.selector"
+    bl_label = "Select Template"
+    filename_ext = ".ini"
+    #filter_glob : bpy.props.StringProperty(default='.', options={'HIDDEN'},) #type: ignore
+    xxmiprop: bpy.props.StringProperty(default="",options={'HIDDEN'},) #type: ignore
 
     def execute(self, context):
         userpath = self.properties.filepath
-        if not os.path.isdir(userpath):
+        if not os.path.isfile(userpath):
             userpath = os.path.dirname(userpath)
             self.properties.filepath = userpath
-            if not os.path.isdir(userpath):
-                msg = "Please select a directory not a file\n" + userpath
+            if not os.path.isfile(userpath):
+                msg = "Please select a file not a directory.\n" + userpath
                 self.report({'ERROR'}, msg)
                 return {'CANCELLED'}
-        context.scene.xxmi.dump_path = userpath
-        bpy.ops.ed.undo_push(message="XXMI Tools: dump path selected")
+        context.scene.xxmi[self.xxmiprop] = os.path.basename(self.properties.filepath)
+        bpy.ops.ed.undo_push(message="XXMI Tools: template selected")
         return{'FINISHED'}
+
 class ExportAdvancedOperator(bpy.types.Operator):
     """Export operation base class"""
     bl_idname = "xxmi.exportadvanced"
@@ -1010,7 +1029,17 @@ class ExportAdvancedOperator(bpy.types.Operator):
             outline_properties = (xxmi.outline_optimization, xxmi.toggle_rounding_outline, xxmi.decimal_rounding_outline, xxmi.angle_weighted, xxmi.overlapping_faces, xxmi.detect_edges, xxmi.calculate_all_faces, xxmi.nearest_edge_distance)
             game = silly_lookup(xxmi.game)
             start = time.time()
-            export_3dmigoto_xxmi(self, context, object_name, vb_path, ib_path, fmt_path, xxmi.use_foldername, xxmi.ignore_hidden, xxmi.only_selected, xxmi.no_ramps, xxmi.delete_intermediate, xxmi.credit, xxmi.copy_textures, outline_properties, game, xxmi.destination_path)
+            export_3dmigoto_xxmi(self, context, 
+                object_name, vb_path, ib_path, 
+                fmt_path, xxmi.use_foldername, 
+                xxmi.ignore_hidden, xxmi.only_selected, 
+                xxmi.no_ramps, xxmi.delete_intermediate, 
+                xxmi.credit, xxmi.copy_textures, 
+                outline_properties, game, 
+                xxmi.destination_path, 
+                [xxmi.template_path] if xxmi.template_panel else None, 
+                xxmi.template_selected if xxmi.template_panel else None
+            )
             print("Export took", time.time() - start, "seconds")
             self.report({'INFO'}, "Export completed")
         except Fatal as e:

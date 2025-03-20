@@ -2486,7 +2486,7 @@ def apply_modifiers_and_shapekeys(context, obj):
     print(f"\tApplied {len(modifiers_to_apply)} modifiers, {total_applied} shapekeys and stored {len(deform_SKs)} shapekeys in {time.time() - start_timer:.5f} seconds")
     return mesh
 
-def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_path, use_foldername, ignore_hidden, only_selected, no_ramps, delete_intermediate, credit, copy_textures, outline_properties, game:GameEnum, destination=None):
+def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_path, use_foldername, ignore_hidden, only_selected, no_ramps, delete_intermediate, credit, copy_textures, outline_properties, game:GameEnum, destination=None, templateFolder=None, template=None):
     scene = bpy.context.scene
 
     # Quick sanity check
@@ -2676,9 +2676,9 @@ def export_3dmigoto_xxmi(operator, context, object_name, vb_path, ib_path, fmt_p
             vb = VertexBufferGroup(layout=layout, topology=topology)
             write_fmt_file(open(fmt_path, 'w'), vb, ib, strides)
 
-    generate_mod_folder(operator, os.path.dirname(vb_path), object_name, offsets, no_ramps, delete_intermediate, credit, copy_textures, game, destination)
+    generate_mod_folder(operator, os.path.dirname(vb_path), object_name, offsets, no_ramps, delete_intermediate, credit, copy_textures, game, destination, templateFolder=templateFolder, template=template)
 
-def generate_mod_folder(operator, path, character_name, offsets, no_ramps, delete_intermediate, credit, copy_textures, game:GameEnum, destination=None):
+def generate_mod_folder(operator, path, character_name, offsets, no_ramps, delete_intermediate, credit, copy_textures, game:GameEnum, destination=None, templateFolder=None, template=None):
     parent_folder = os.path.join(path, "../")
     char_hash = load_hashes(path, character_name, "hash.json")
     if not destination:
@@ -2838,7 +2838,7 @@ def generate_mod_folder(operator, path, character_name, offsets, no_ramps, delet
 #            - filtered_resources(each point to a file)
 
     print("Generating .ini file")
-    ini_data = generate_ini(character_name, char_hash, offsets, texture_hashes_written, credit, game, operator)
+    ini_data = generate_ini(character_name, char_hash, offsets, texture_hashes_written, credit, game, operator, user_paths=templateFolder, template_name=template)
     if not ini_data:
         raise Fatal("ERROR: Could not generate ini file. Install dependencies from settings")
     with open(os.path.join(destination, f"{character_name}.ini"), "w", encoding="UTF-8") as f:

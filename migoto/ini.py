@@ -7,13 +7,16 @@ try:
     from jinja2 import Environment, FileSystemLoader
 except ImportError:
     def generate_ini(character_name:str, char_hash: dict, offsets: list, texture_hashes_written: dict,
-                    credit: str, game, operator, user_paths: list[str] = None, template_name: str = "default.ini"):
+                    credit: str, game, operator, user_paths: list[str] = None, template_name: str|None  = "default.ini"):
         return False
 else:
     def generate_ini(character_name:str, char_hash: dict, offsets: list, texture_hashes_written: dict, credit: str,
-                    game, operator, user_paths: list[str] = None, template_name: str = "default.ini"):
+                    game, operator, user_paths: list[str] = None, template_name: str|None = "default.ini"):
         """Generates an ini file from a template file using Jinja2.
         Trailing spaces are removed from the template file."""
+
+        if template_name is None or template_name == "":
+            template_name = "default.ini"
         addon_path = None
         for mod in addon_utils.modules():
             if mod.bl_info['name'] == 'XXMI_Tools':
@@ -21,7 +24,9 @@ else:
                 break
         templates_paths = [os.path.join(addon_path, "templates")]
         if user_paths:
-            templates_paths.extend(user_paths)
+            # prefer user paths to overwrite original inis
+            user_paths.extend(templates_paths)
+            templates_paths = user_paths
         env = Environment(loader=FileSystemLoader(searchpath=templates_paths),
                         trim_blocks=True, lstrip_blocks=True)
         template = env.get_template(template_name)

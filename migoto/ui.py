@@ -174,8 +174,10 @@ class XXMI_PT_Sidebar(bpy.types.Panel):
         col_2 = split.column()
         col_1.prop(xxmi, "dump_path")
         col_1.prop(xxmi, "destination_path")
-        col_2.operator("dump.selector", icon="FILE_FOLDER", text="")
-        col_2.operator("destination.selector", icon="FILE_FOLDER", text="")
+        dump = col_2.operator("folder.selector", icon="FILE_FOLDER", text="")
+        dump.xxmiprop = "dump_path"
+        dest = col_2.operator("folder.selector", icon="FILE_FOLDER", text="")
+        dest.xxmiprop = "destination_path"
         layout.separator()
         col = layout.column(align=True)
         col.prop(xxmi, 'game')
@@ -212,6 +214,22 @@ class XXMI_PT_SidePanelExportSettings(XXMISidebarOptionsPanelBase, bpy.types.Pan
         col.prop(xxmi, 'apply_modifiers_and_shapekeys')
         col.prop(xxmi, 'join_meshes')
         col.prop(xxmi, 'normalize_weights')
+
+        # Custom Jinja Templates
+        col.prop(xxmi, 'template_panel')
+        if xxmi.template_panel:
+            row = box.row()
+            col = row.column()
+            col.prop(xxmi, 'template_path',)
+            #self.layout.separator_spacer()
+            template = row.column().operator("folder.selector", icon="FILE_FOLDER", text="")
+            template.xxmiprop = "template_path"
+
+            row = box.row()
+            col = row.column()
+            col.prop(xxmi, 'template_selected',)
+            template = row.column().operator("template.selector", icon="FILE_FOLDER", text="")
+            template.xxmiprop = "template_selected"
         # col.prop(xxmi, 'export_shapekeys')
 
 class XXMI_PT_SidePanelExportCredit(XXMISidebarOptionsPanelBase, bpy.types.Panel):
