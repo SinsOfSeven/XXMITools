@@ -1,49 +1,50 @@
+import bpy
 import itertools
 import os
-import struct
-
 import re
-import numpy
+import struct
+from glob import escape as glob_escape
+from glob import glob
 from pathlib import Path
 from typing import Callable
-from glob import glob, escape as glob_escape
 
-import bpy
+import numpy
 from bpy.props import BoolProperty, CollectionProperty, StringProperty
 from bpy.types import (
+    Context,
+    Mesh,
+    Object,
     Operator,
     OperatorFileListElement,
     PropertyGroup,
-    Context,
-    Object,
-    Mesh,
 )
 from bpy_extras.io_utils import (
     ImportHelper,
+    axis_conversion,
     orientation_helper,
     unpack_list,
-    axis_conversion,
 )
 
 from .datahandling import (
-    find_stream_output_vertex_buffers,
-    open_frame_analysis_log_file,
     apply_vgmap,
+    assert_pointlist_ib_is_pointless,
+    find_stream_output_vertex_buffers,
+    import_pose,
     new_custom_attribute_float,
     new_custom_attribute_int,
-    assert_pointlist_ib_is_pointless,
-    import_pose,
+    open_frame_analysis_log_file,
 )
 from .datastructures import (
     Fatal,
     ImportPaths,
+    IndexBuffer,
     IOOBJOrientationHelper,
     VBSOMapEntry,
     VertexBufferGroup,
-    IndexBuffer,
     vertex_color_layer_channels,
 )
 from .export_ops import XXMIProperties
+from .importer import ObjectImporter
 
 
 def load_3dmigoto_mesh_bin(operator: Operator, vb_paths, ib_paths, pose_path):
@@ -1083,23 +1084,26 @@ class Import3DMigotoFrameAnalysis(Operator, ImportHelper, IOOBJOrientationHelper
             self.load_related = False
 
         try:
-            keywords = self.as_keywords(
-                ignore=(
-                    "filepath",
-                    "files",
-                    "filter_glob",
-                    "load_related",
-                    "load_related_so_vb",
-                    "load_buf",
-                    "pose_cb",
-                    "load_buf_limit_range",
-                    "semantic_remap",
-                    "semantic_remap_idx",
-                )
-            )
-            paths = self.get_vb_ib_paths()
+            # keywords = self.as_keywords(
+            #     ignore=(
+            #         "filepath",
+            #         "files",
+            #         "filter_glob",
+            #         "load_related",
+            #         "load_related_so_vb",
+            #         "load_buf",
+            #         "pose_cb",
+            #         "load_buf_limit_range",
+            #         "semantic_remap",
+            #         "semantic_remap_idx",
+            #     )
+            # )
+            # paths = self.get_vb_ib_paths()
+            #
+            # import_3dmigoto(self, context, paths, **keywords)
+            object_importer = ObjectImporter()
+            object_importer.import_object(self, context)
 
-            import_3dmigoto(self, context, paths, **keywords)
             xxmi: XXMIProperties = context.scene.xxmi
             if not xxmi.dump_path:
                 if os.path.exists(
