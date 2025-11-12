@@ -1,8 +1,9 @@
 import bpy
 import itertools
 import os
-import re
 import struct
+import csv
+import re
 from glob import escape as glob_escape
 from glob import glob
 from pathlib import Path
@@ -44,7 +45,6 @@ from .datastructures import (
     vertex_color_layer_channels,
 )
 from .export_ops import XXMIProperties
-from .importer import ObjectImporter
 
 
 def load_3dmigoto_mesh_bin(operator: Operator, vb_paths, ib_paths, pose_path):
@@ -580,6 +580,7 @@ def import_3dmigoto_vb_ib(
 
     import_vertex_groups(mesh, obj, blend_indices, blend_weights)
 
+    import_shapekeys(mesh, obj, paths)
     # Validate closes the loops so they don't disappear after edit mode and probably other important things:
     mesh.validate(
         verbose=False, clean_customdata=False
@@ -625,6 +626,60 @@ def import_3dmigoto_vb_ib(
         context.view_layer.objects.active = obj
 
     return obj
+
+
+def import_shapekeys(mesh: Mesh, obj: Object, paths: ImportPaths):
+    print("############SKTESTING########################")
+
+    first_vertex: int = int(obj["3DMigoto:FirstVertex"])
+
+    vb_path: Path = Path(paths[0].vb_paths[0])  # FIXME: There can be multiple
+    basename: str = str(vb_path.stem).split("-")[0][:-1]
+    sk_filename: str = basename + "SKDeltas.buf"
+    sk_path: Path = vb_path.parent / sk_filename
+    offsets_filename: str = basename + "SKOffsets.csv"
+    offsets_path: Path = vb_path.parent / offsets_filename
+
+    if not sk_path.exists() or not offsets_path.exists():
+        print(
+            f"No shapekey files found for {vb_path}. "
+            + "Skipping sk application for current object"
+        )
+        return
+
+    sk_offsets = []
+
+    with offsets_path.open("r", newline="") as f:
+        csvreader = csv.DictReader(f, delimiter=",")
+        for row in csvreader:
+            sk_offsets.append(
+                {"offset": int(row["offset"]), "count": int(row["count"])}
+            )
+    obj["3DMigoto:SKOffsets"] = sk_offsets
+    sk_dtype = numpy.dtype(
+        [
+            ("VINDEX", numpy.uint32),
+            ("POSITION", numpy.float32, 3),
+            ("NORMAL", numpy.float32, 3),
+            ("TANGENT", numpy.float32, 3),
+        ]
+    )
+    sk_buffer = numpy.fromfile((sk_path).open("rb"), dtype=sk_dtype)
+
+    vb = numpy.zeros(len(mesh.vertices) * 3, dtype=numpy.float32)
+    mesh.vertices.foreach_get("co", vb)
+    shapekey = obj.shape_key_add(name="Basis")
+    shapekey.data.foreach_set("co", vb.ravel())
+    print(sk_offsets)
+    for i, chunk in enumerate(sk_offsets):
+        shapekey = obj.shape_key_add(name=f"DEFORM_{i:03}")
+        co = numpy.zeros(len(mesh.vertices), dtype=(numpy.float32, 3))
+        for j in range(chunk["count"]):
+            vertindex = sk_buffer[chunk["offset"] + j - first_vertex]["VINDEX"]
+            co[vertindex] = sk_buffer[chunk["offset"] + j - first_vertex]["POSITION"]
+        shapekey.data.foreach_set("co", co.ravel() + vb.ravel())
+    print("Finished applying shapekeys")
+    print("############SKTESTING########################")
 
 
 def import_3dmigoto(
@@ -1084,25 +1139,23 @@ class Import3DMigotoFrameAnalysis(Operator, ImportHelper, IOOBJOrientationHelper
             self.load_related = False
 
         try:
-            # keywords = self.as_keywords(
-            #     ignore=(
-            #         "filepath",
-            #         "files",
-            #         "filter_glob",
-            #         "load_related",
-            #         "load_related_so_vb",
-            #         "load_buf",
-            #         "pose_cb",
-            #         "load_buf_limit_range",
-            #         "semantic_remap",
-            #         "semantic_remap_idx",
-            #     )
-            # )
-            # paths = self.get_vb_ib_paths()
-            #
-            # import_3dmigoto(self, context, paths, **keywords)
-            object_importer = ObjectImporter()
-            object_importer.import_object(self, context)
+            keywords = self.as_keywords(
+                ignore=(
+                    "filepath",
+                    "files",
+                    "filter_glob",
+                    "load_related",
+                    "load_related_so_vb",
+                    "load_buf",
+                    "pose_cb",
+                    "load_buf_limit_range",
+                    "semantic_remap",
+                    "semantic_remap_idx",
+                )
+            )
+            paths = self.get_vb_ib_paths()
+
+            import_3dmigoto(self, context, paths, **keywords)
 
             xxmi: XXMIProperties = context.scene.xxmi
             if not xxmi.dump_path:

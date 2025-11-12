@@ -297,6 +297,62 @@ class ModExporter:
         self.__objs_to_cleanup.append(obj)
         return final_mesh
 
+    def combine_sk_data(
+        self, sk_buffers: dict[int, dict[str, NumpyBuffer]]
+    ) -> tuple[NumpyBuffer, NumpyBuffer]:
+        """Combine shape key buffers into a single buffer and create an offset buffer."""
+        if len(sk_buffers) == 0:
+            raise Fatal("No shape key buffers to combine.")
+        combined_deltas: NumpyBuffer = NumpyBuffer(
+            layout=sk_buffers[0]["SKDeltas"].layout
+        )
+        combined_offsets: NumpyBuffer = NumpyBuffer(
+            layout=sk_buffers[0]["SKOffsets"].layout
+        )
+
+        deltas_data, offsets_data = [], []
+        offset: int = 0
+        print(" SK| old_off | old_count | offset | count ")
+        debug_count = 0
+        for i in range(128):
+            old_offset, old_count, new_offset, new_count = 0, 0, 0, 0
+            v_count: int = 0
+            for vb_offset, buffers in sk_buffers.items():
+                sk_deltas: NumpyBuffer = buffers["SKDeltas"]
+                sk_offsets: NumpyBuffer = buffers["SKOffsets"]
+                sk_offsets.data.reshape((-1, 4))
+                if i >= len(sk_offsets):
+                    break
+                if i == 0:
+                    debug_count += buffers["SKDeltas"].data.size
+                    sk_deltas.data["VINDEX"] += vb_offset
+                old_offset, old_count, new_offset, new_count = sk_offsets.data[i]
+                print(
+                    f"   |{old_offset:^9}|{old_count:^11}|{new_offset:^8}|{new_count:^7}"
+                )
+                if new_offset + new_count == 0:
+                    continue
+                deltas_data.extend(sk_deltas.data[new_offset : new_offset + new_count])
+                v_count += new_count
+            offsets_data.extend((old_offset, old_count, offset, v_count))
+            print(f"{i:> 3}|         |           |{offset:^8}|{v_count:^7}")
+            offset += v_count
+
+        combined_deltas.data = numpy.array(
+            deltas_data, dtype=combined_deltas.data.dtype
+        )
+        combined_offsets.data = numpy.array(
+            offsets_data, dtype=combined_offsets.data.dtype
+        )
+        combined_offsets.data = combined_offsets.data[0 : 41 * 4]
+        print(combined_offsets.data)
+        print(combined_deltas.data.dtype)
+        print(
+            f"Combined {len(sk_buffers)} SK buffers into one with {len(combined_deltas)} deltas."
+        )
+
+        return combined_deltas, combined_offsets
+
     def generate_buffers(self) -> None:
         """Generate buffers for the objects."""
         self.files_to_write = {}
@@ -321,8 +377,9 @@ class ModExporter:
             out_buffers: dict[str, NumpyBuffer] = {
                 key: NumpyBuffer(layout=entry)
                 for key, entry in data_model.buffers_format.items()
-                if key != "IB"
+                if key != "IB" and not key.lower().startswith("sk")
             }
+            sk_buffers: dict[int, dict[str, NumpyBuffer]] = {}
             component_ib: NumpyBuffer = NumpyBuffer(
                 layout=data_model.buffers_format["IB"]
             )
@@ -367,7 +424,18 @@ class ModExporter:
                     for k, v in out_buffers.items():
                         if k not in gen_buffers:
                             continue
+                        if k.lower().startswith("sk"):
+                            continue
                         v.append(gen_buffers[k])
+
+                    sk_buffers.setdefault(
+                        vb_offset,
+                        {
+                            "SKDeltas": gen_buffers["SKDeltas"],
+                            "SKOffsets": gen_buffers["SKOffsets"],
+                        },
+                    )
+
                     part_ib.append(gen_buffers["IB"])
                     vb_offset += v_count
                     entry.vertex_count = v_count
@@ -385,6 +453,16 @@ class ModExporter:
                 )
             if self.outline_optimization:
                 self.optimize_outlines(out_buffers, component_ib)
+            print("##### SK DEBUGGING #####")
+            sk_deltas, sk_offsets = self.combine_sk_data(sk_buffers)
+            self.files_to_write.setdefault(
+                self.destination / (component.fullname + "SKDeltas.buf"),
+                sk_deltas.data,
+            )
+            self.files_to_write.setdefault(
+                self.destination / (component.fullname + "SKIdentity.buf"),
+                sk_offsets.data,
+            )
             if component.blend_vb != "":
                 self.files_to_write[
                     self.destination / (component.fullname + "Position.buf")

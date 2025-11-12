@@ -1,3 +1,4 @@
+import re
 import time
 from typing import Callable, Optional, Union
 import copy
@@ -608,6 +609,33 @@ class DataModelXXMI(DataModel):
                 cls.format_converters[bitan_abstract] = [
                     lambda data: cls.converter_flip_bitangent_sign(data)
                 ]
+            cls.buffers_format["SKDeltas"] = BufferLayout(
+                [
+                    BufferSemantic(
+                        AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT
+                    ),
+                    BufferSemantic(
+                        AbstractSemantic(Semantic.ShapeKey, 0),
+                        DXGIFormat.R32G32B32_FLOAT,
+                    ),
+                    BufferSemantic(
+                        AbstractSemantic(Semantic.ShapeKey, 3),
+                        DXGIFormat.R32G32B32_FLOAT,
+                    ),
+                    BufferSemantic(
+                        AbstractSemantic(Semantic.ShapeKey, 4),
+                        DXGIFormat.R32G32B32_FLOAT,
+                    ),
+                ]
+            )
+            cls.buffers_format["SKOffsets"] = BufferLayout(
+                [
+                    BufferSemantic(
+                        AbstractSemantic(Semantic.ShapeKey, 2), DXGIFormat.R32_UINT
+                    ),
+                ]
+            )
+
         return cls
 
     def converter_normalize_weights(self, data: NDArray) -> NDArray:
@@ -702,3 +730,146 @@ class DataModelXXMI(DataModel):
             flip_winding=flip_winding,
         )
         return index_buffer, vertex_buffer
+
+    def get_data(
+        self,
+        context: Context,
+        collection: Collection,
+        obj: Object,
+        mesh: Mesh,
+        excluded_buffers: list[str],
+        mirror_mesh: bool = False,
+    ) -> tuple[dict[str, NumpyBuffer], int]:
+        try:
+            index_data, vertex_buffer = self.export_data(
+                context, collection, mesh, excluded_buffers, mirror_mesh
+            )
+        except RuntimeError:
+            raise Fatal(
+                f"Failed to calculate tangents! Ensure the mesh({obj.name}) has at least 1 UV map called 'TEXCOORD.xy'"
+            )
+
+        buffers = self.build_buffers(index_data, vertex_buffer, excluded_buffers)
+
+        vertex_ids = vertex_buffer.get_field(
+            AbstractSemantic(Semantic.VertexId).get_name()
+        )
+
+        shapekeys = self.export_shapekeys(
+            obj, vertex_ids, excluded_buffers, mirror_mesh
+        )
+        buffers.update(shapekeys)
+
+        return buffers, len(vertex_buffer)
+
+    def export_shapekeys(
+        self,
+        obj: Object,
+        vertex_ids: numpy.ndarray,
+        excluded_buffers: list[str],
+        mirror_mesh: bool = False,
+    ) -> dict[str, NumpyBuffer]:
+        start_time = time.time()
+
+        if (
+            hasattr(obj.data, "shape_keys") is False
+            or len(getattr(obj.data.shape_keys, "key_blocks", [])) == 0
+        ):
+            print("No shapekeys found to process!")
+            return {}
+
+        buffers = {}
+        for buffer_name, buffer_layout in self.buffers_format.items():
+            if buffer_name in excluded_buffers:
+                continue
+            for semantic in buffer_layout.semantics:
+                if semantic.abstract.enum == Semantic.ShapeKey:
+                    buffers[buffer_name] = NumpyBuffer(buffer_layout)
+                    break
+
+        if len(buffers) == 0:
+            print("Skipped shapekeys fetching!")
+            return {}
+
+        shapekey_offsets, shapekey_vertex_ids, shapekey_vertex_offsets = [], [], []
+
+        shapekey_pattern = re.compile(r".*(?:deform|custom)[_ -]*(\d+).*")
+        shapekey_ids = {}
+
+        for shapekey in obj.data.shape_keys.key_blocks:
+            match = shapekey_pattern.findall(shapekey.name.lower())
+            if len(match) == 0:
+                continue
+            shapekey_id = int(match[0])
+            shapekey_ids[shapekey_id] = shapekey.name
+
+        shapekeys = self.data_extractor.get_shapekey_data(
+            obj, names_filter=list(shapekey_ids.values()), deduct_basis=True
+        )
+
+        og_offset_count: list = obj.get("3DMigoto:SKOffsets", [])
+        shapekey_verts_count = 0
+        for group_id in range(128):
+            shapekey = shapekeys.get(shapekey_ids.get(group_id, -1), None)
+            if shapekey is None or not (
+                -0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001
+            ):
+                shapekey_offsets.append([0, 0, 0, 0])
+                continue
+
+            shapekey = shapekey[vertex_ids]
+            shapekey_vert_ids = numpy.where(numpy.any(shapekey != 0, axis=1))[0]
+            shapekey_vertex_ids.extend(shapekey_vert_ids)
+            shapekey_vertex_offsets.extend(shapekey[shapekey_vert_ids])
+
+            # Custom sk have offset/count set to 0
+            # FIXME: up till now gaps in vanilla SK might cause issues, need to test more
+            old_offset = (
+                og_offset_count[group_id]["offset"]
+                if group_id < len(og_offset_count)
+                else 0
+            )
+            old_count = (
+                og_offset_count[group_id]["count"]
+                if group_id < len(og_offset_count)
+                else 0
+            )
+            shapekey_offsets.append(
+                [
+                    old_offset,
+                    old_count,
+                    shapekey_verts_count,
+                    len(shapekey_vert_ids),
+                ]
+            )
+            shapekey_verts_count += len(shapekey_vert_ids)
+
+        if len(shapekey_vertex_ids) == 0:
+            return {}
+        # FIXME: don't hardcode dtype
+        shapekey_offsets = numpy.array(shapekey_offsets, dtype=numpy.uint32)
+        shapekey_deltas = numpy.zeros(
+            len(shapekey_vertex_offsets),
+            dtype=(
+                [
+                    ("VINDEX", numpy.uint32),
+                    ("POSITION", numpy.float32, 3),
+                    ("NORMAL", numpy.float32, 3),
+                    ("TANGENT", numpy.float32, 3),
+                ]
+            ),
+        )
+        shapekey_deltas["VINDEX"] = shapekey_vertex_ids
+        shapekey_deltas["POSITION"] = shapekey_vertex_offsets
+
+        if mirror_mesh:
+            shapekey_deltas["POSITION"][:, 0] *= -1
+
+        buffers["SKOffsets"].set_data(shapekey_offsets)
+        buffers["SKDeltas"].set_data(shapekey_deltas)
+
+        print(
+            f"Shape Keys formatting time: {time.time() - start_time:.3f}s ({len(shapekey_vertex_ids)} shapekeyed vertices)"
+        )
+
+        return buffers
