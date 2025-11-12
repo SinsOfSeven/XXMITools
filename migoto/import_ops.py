@@ -580,7 +580,7 @@ def import_3dmigoto_vb_ib(
 
     import_vertex_groups(mesh, obj, blend_indices, blend_weights)
 
-    import_shapekeys(mesh, obj, paths)
+    import_shapekeys(mesh, obj, paths, flip_mesh)
     # Validate closes the loops so they don't disappear after edit mode and probably other important things:
     mesh.validate(
         verbose=False, clean_customdata=False
@@ -628,9 +628,7 @@ def import_3dmigoto_vb_ib(
     return obj
 
 
-def import_shapekeys(mesh: Mesh, obj: Object, paths: ImportPaths):
-    print("############SKTESTING########################")
-
+def import_shapekeys(mesh: Mesh, obj: Object, paths: ImportPaths, flip_mesh: bool):
     first_vertex: int = int(obj["3DMigoto:FirstVertex"])
 
     vb_path: Path = Path(paths[0].vb_paths[0])  # FIXME: There can be multiple
@@ -665,6 +663,9 @@ def import_shapekeys(mesh: Mesh, obj: Object, paths: ImportPaths):
         ]
     )
     sk_buffer = numpy.fromfile((sk_path).open("rb"), dtype=sk_dtype)
+
+    if flip_mesh:
+        sk_buffer["POSITION"][:, 0] *= -1.0
 
     vb = numpy.zeros(len(mesh.vertices) * 3, dtype=numpy.float32)
     mesh.vertices.foreach_get("co", vb)
