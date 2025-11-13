@@ -506,6 +506,32 @@ class DataModelXXMI(DataModel):
         ]
         blend_semantics: list[Semantic] = [Semantic.Blendweight, Semantic.Blendindices]
         tex_semantics: list[Semantic] = [Semantic.TexCoord, Semantic.Color]
+        cls.buffers_format["SKDeltas"] = BufferLayout(
+            [
+            BufferSemantic(
+                AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT
+            ),
+            BufferSemantic(
+                AbstractSemantic(Semantic.ShapeKey, 0),
+                DXGIFormat.R32G32B32_FLOAT,
+            ),
+            BufferSemantic(
+                AbstractSemantic(Semantic.ShapeKey, 3),
+                DXGIFormat.R32G32B32_FLOAT,
+            ),
+            BufferSemantic(
+                AbstractSemantic(Semantic.ShapeKey, 4),
+                DXGIFormat.R32G32B32_FLOAT,
+                ),
+            ]
+        )
+        cls.buffers_format["SKOffsets"] = BufferLayout(
+            [
+                BufferSemantic(
+                    AbstractSemantic(Semantic.ShapeKey, 2), DXGIFormat.R32_UINT
+                ),
+            ]
+        )
         if game == GameEnum.HonkaiImpactPart2:
             pos_semantics = [
                 Semantic.Position,
@@ -609,32 +635,6 @@ class DataModelXXMI(DataModel):
                 cls.format_converters[bitan_abstract] = [
                     lambda data: cls.converter_flip_bitangent_sign(data)
                 ]
-            cls.buffers_format["SKDeltas"] = BufferLayout(
-                [
-                    BufferSemantic(
-                        AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT
-                    ),
-                    BufferSemantic(
-                        AbstractSemantic(Semantic.ShapeKey, 0),
-                        DXGIFormat.R32G32B32_FLOAT,
-                    ),
-                    BufferSemantic(
-                        AbstractSemantic(Semantic.ShapeKey, 3),
-                        DXGIFormat.R32G32B32_FLOAT,
-                    ),
-                    BufferSemantic(
-                        AbstractSemantic(Semantic.ShapeKey, 4),
-                        DXGIFormat.R32G32B32_FLOAT,
-                    ),
-                ]
-            )
-            cls.buffers_format["SKOffsets"] = BufferLayout(
-                [
-                    BufferSemantic(
-                        AbstractSemantic(Semantic.ShapeKey, 2), DXGIFormat.R32_UINT
-                    ),
-                ]
-            )
 
         return cls
 
