@@ -51,6 +51,8 @@ class Part:
     objects: list[SubObj]
     textures: list[TextureData]
     first_index: int
+    index_count: int = 0
+    first_vertex: int = 0
     vertex_count: int = 0
 
 
@@ -238,7 +240,10 @@ class ModExporter:
                         fullname=part_name,
                         objects=objects,
                         textures=textures,
-                        first_index=component["object_indexes"][j],
+                        first_index=obj.get("3DMigoto:FirstIndex", component["object_indexes"][j]),
+                        first_vertex=obj.get("3DMigoto:FirstVertex",0),
+                        index_count=obj.get("3DMigoto:IndexCount",0),
+                        
                     )
                 )
             self.mod_file.components.append(component_entry)
