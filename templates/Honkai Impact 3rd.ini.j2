@@ -73,12 +73,16 @@
         [TextureOverride{{component.fullname}}IB]
         hash = {{ component.ib }}
         handling = skip
-
         {% for part in component.parts if part.vertex_count > 0 %}
-            [TextureOverride{{ part.fullname }}]
-            hash = {{ component.ib }}
-            match_first_index = {{ part.first_index }}
+            if FIRST_INDEX == {{ part.first_index }}
             ib = Resource{{ part.fullname }}IB
+            {% for texture in part.textures %}
+                {% if "trash" not in texture.name | lower %}
+                    ps-t{{ loop.index0 }} = Resource{{ part.fullname }}{{ texture.name }}
+                {% else %}
+                    ; ps-t{{ loop.index0 }} = skipped trash texture 
+                {% endif %}
+            {% endfor %}
             {% for entry in part.objects if entry.vertex_count > 0 %}
                 {% if loop.previtem and loop.previtem.collection_name != entry.collection_name %}
                     ; {{ entry.collection_name }}
@@ -86,12 +90,12 @@
                 ; {{ entry.name }} ({{ entry.vertex_count }})
                 drawindexed = {{ entry.index_count}}, {{ entry.index_offset }}, 0
             {% endfor %}
-
+            endif
         {% endfor %}
     {% endfor %}
-    {% for component in mod_file.components %}
+    {% for component in mod_file.components if component.draw_vb == "" %}
         {% for part in component.parts %}
-            {% for texture in part.textures %}
+            {% for texture in part.textures if "trash" not in texture.name %}
                 [TextureOverride{{part.fullname}}{{ texture.name }}]
                 hash = {{ texture.hash }}
                 this = Resource{{part.fullname}}{{ texture.name }}
@@ -149,10 +153,9 @@
 {% block resourcetextures %}
     {% for component in mod_file.components %}
         {% for part in component.parts %}
-            {% for texture in part.textures %}
+            {% for texture in part.textures if "trash" not in texture.name %}
                 [Resource{{ part.fullname }}{{ texture.name }}]
                 filename = {{ part.fullname }}{{ texture.name }}{{ texture.extension }}
-
             {% endfor %}
         {% endfor %}
     {% endfor %}

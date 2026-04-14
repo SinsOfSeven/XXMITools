@@ -54,7 +54,7 @@ class Part:
     index_count: int = 0
     first_vertex: int = 0
     vertex_count: int = 0
-
+    index_args: list = field(default_factory=list)
 
 @dataclass
 class Component:
@@ -243,7 +243,7 @@ class ModExporter:
                         first_index=obj.get("3DMigoto:FirstIndex", component["object_indexes"][j]),
                         first_vertex=obj.get("3DMigoto:FirstVertex",0),
                         index_count=obj.get("3DMigoto:IndexCount",0),
-                        
+                        index_args=[]
                     )
                 )
             self.mod_file.components.append(component_entry)
@@ -446,6 +446,8 @@ class ModExporter:
                     entry.index_count = len(gen_buffers["IB"].data)
                     entry.index_offset = ib_offset
                     ib_offset += entry.index_count
+                    #icount, instcount, ioffset, voffset, instoffset
+                    part.index_args += [entry.index_count, 1, entry.index_offset, 0, 0]
                 if len(part_ib) == 0:
                     print(f"Skipping {part.fullname}.ib due to no index data.")
                     continue
@@ -453,6 +455,9 @@ class ModExporter:
                 self.files_to_write[self.destination / (part.fullname + ".ib")] = (
                     part_ib.data
                 )
+                print(part.index_args)
+                args_out = numpy.array(part.index_args, dtype=numpy.uint32)
+                self.files_to_write[self.destination / (part.fullname + "IndexArgs.buf")] = args_out
             if self.outline_optimization:
                 self.optimize_outlines(out_buffers, component_ib)
             print("##### SK DEBUGGING #####")
@@ -510,7 +515,8 @@ class ModExporter:
         for sem in semantics_to_check:
             abs_enum: Semantic = sem.abstract.enum
             abs_name: str = sem.abstract.get_name()
-            if abs_enum == Semantic.Color and mesh.vertex_colors.get(abs_name) is None:
+            if abs_enum == Semantic.Color and mesh.vertex_colors.get(abs_name)\
+                is None and mesh.color_attributes.get(abs_name) is None:
                 missing_colors.append(abs_name)
             if abs_enum == Semantic.TexCoord and mesh.uv_layers.get(abs_name) is None:
                 missing_uvs.append(abs_name)
@@ -704,9 +710,7 @@ class ModExporter:
             norm: NDArray = numpy.empty_like(verts_outline_vector)
             norm[ib_data] = loops_face_normal
             tan: NDArray = unit_vector(pos_buf.data["TANGENT"])
-            bitan: NDArray = pos_buf.data["BITANGENTSIGN"][
-                :, numpy.newaxis
-            ] * numpy.cross(norm, tan)
+            bitan: NDArray = numpy.cross(norm, tan)
             texcoord1_element = tex_buf.layout.get_element(
                 AbstractSemantic(Semantic.TexCoord, 1)
             )

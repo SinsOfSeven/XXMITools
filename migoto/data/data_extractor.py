@@ -225,9 +225,12 @@ class BlenderDataExtractor:
             elif semantic == Semantic.BitangentSign:
                 data = self.fetch_data(mesh.loops, "bitangent_sign", numpy_type, size)
             elif semantic == Semantic.Color:
-                data = self.fetch_data(
-                    mesh.vertex_colors[semantic_name].data, "color", numpy_type, size
-                )
+                if hasattr(mesh, 'vertex_colors') and mesh.vertex_colors.get(semantic_name):
+                    # Legacy projects support of deprecated vertex_colors
+                    color_attribute = mesh.vertex_colors[semantic_name]
+                else:
+                    color_attribute = mesh.color_attributes[semantic_name]
+                data = self.fetch_data(color_attribute.data, 'color', numpy_type, size)
             elif semantic == Semantic.TexCoord:
                 data = self.fetch_data(
                     mesh.uv_layers[semantic_name].data, "uv", numpy_type, size

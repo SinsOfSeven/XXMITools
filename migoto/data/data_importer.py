@@ -143,8 +143,8 @@ class BlenderDataImporter:
                       color_data: numpy.ndarray, 
                       vertex_ids: numpy.ndarray):
         
-        mesh.vertex_colors.new(name=color_name)
-        color_layer = mesh.vertex_colors[color_name].data
+        mesh.color_attributes.new(name=color_name, type='FLOAT_COLOR', domain='CORNER')
+        color_layer = mesh.color_attributes[color_name].data
         color_layer.foreach_set('color', color_data[vertex_ids].flatten())
 
     def import_normals(self, 

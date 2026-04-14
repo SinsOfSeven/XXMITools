@@ -435,18 +435,18 @@ def import_vertices(
             if len(data[0]) <= 3 or vertex_color_layer_channels == 4:
                 # Either a monochrome/RGB layer, or Blender 2.80 which uses 4
                 # channel layers
-                mesh.vertex_colors.new(name=elem.name)
-                color_layer = mesh.vertex_colors[elem.name].data
+                mesh.color_attributes.new(name=elem.name, type='FLOAT_COLOR', domain='CORNER')
+                color_layer = mesh.color_attributes[elem.name].data
                 c = vertex_color_layer_channels
                 for loop in mesh.loops:
                     color_layer[loop.index].color = list(data[loop.vertex_index]) + [
                         0
                     ] * (c - len(data[loop.vertex_index]))
             else:
-                mesh.vertex_colors.new(name=elem.name + ".RGB")
-                mesh.vertex_colors.new(name=elem.name + ".A")
-                color_layer = mesh.vertex_colors[elem.name + ".RGB"].data
-                alpha_layer = mesh.vertex_colors[elem.name + ".A"].data
+                mesh.color_attributes.new(name=elem.name + ".RGB", type='FLOAT_COLOR', domain='CORNER')
+                mesh.color_attributes.new(name=elem.name + ".A", type='FLOAT_COLOR', domain='CORNER')
+                color_layer = mesh.color_attributes[elem.name + ".RGB"].data
+                alpha_layer = mesh.color_attributes[elem.name + ".A"].data
                 for loop in mesh.loops:
                     color_layer[loop.index].color = data[loop.vertex_index][:3]
                     alpha_layer[loop.index].color = [data[loop.vertex_index][3], 0, 0]
@@ -632,7 +632,7 @@ def import_3dmigoto_vb_ib(
 def import_shapekeys(mesh: Mesh, obj: Object, paths: ImportPaths, flip_mesh: bool):
     first_vertex: int = int(obj["3DMigoto:FirstVertex"])
 
-    vb_path: Path = Path(paths[0].vb_paths[0])  # FIXME: There can be multiple
+    vb_path: Path = Path(paths[0].vb_paths[0][0])  # FIXME: There can be multiple
     basename: str = str(vb_path.stem).split("-")[0][:-1]
     sk_filename: str = basename + "SKDeltas.buf"
     sk_path: Path = vb_path.parent / sk_filename
@@ -675,6 +675,7 @@ def import_shapekeys(mesh: Mesh, obj: Object, paths: ImportPaths, flip_mesh: boo
     print(sk_offsets)
     for i, chunk in enumerate(sk_offsets):
         shapekey = obj.shape_key_add(name=f"DEFORM_{i:03}")
+        shapekey.value = 0
         co = numpy.zeros(len(mesh.vertices), dtype=(numpy.float32, 3))
         for j in range(chunk["count"]):
             vertindex = sk_buffer[chunk["offset"] + j - first_vertex]["VINDEX"]
