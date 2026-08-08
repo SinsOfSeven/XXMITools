@@ -1,0 +1,14 @@
+{%  if game.value ==  "Honkai Impact 3rd" %}
+    {% include "Honkai Impact 3rd.ini.j2" %}
+{%  elif game.value == "Genshin Impact" %}
+    {% include "Genshin Impact.ini.j2" %}
+{%  elif game.value == "Honkai Star Rail" %}
+    {% include "Honkai Star Rail.ini.j2" %}
+{%  elif game.value == "Zenless Zone Zero" %}
+    {% include "Zenless Zone Zero.ini.j2" %}
+{%  elif game.value == "Honkai Impact 3rd Part 2" %}
+    {% include "Honkai Impact 3rd Part 2.ini.j2" %}
+{%  else %}
+    Unsuported game:
+    {{game.value}}
+{% endif %}
